@@ -201,6 +201,25 @@
   .tg{display:inline-block;font-size:10.5px;background:var(--amber-wash);color:var(--amber);padding:2px 8px;border-radius:6px;margin:3px 4px 0 0;font-weight:600}
   .note{font-size:11px;color:var(--ink3);line-height:1.7;margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}
   .note b{color:var(--ink2);font-weight:600}
+  /* AI box / カルテ / 面談 */
+  .aibox{display:flex;gap:11px;background:#eef4ff;border:1px solid #d4e2fb;border-radius:12px;padding:13px 15px;margin-bottom:18px}
+  .aibox .ai-ic{width:27px;height:27px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:700}
+  .aibox .ai-tx{font-size:12.5px;line-height:1.6;color:#1a3a6b}
+  .aibox .ai-tx b{display:block;font-size:10px;letter-spacing:.05em;color:var(--accent);margin-bottom:2px;text-transform:uppercase}
+  .kit{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:8px}
+  .kit .c{background:var(--bg);border-radius:10px;padding:9px 12px}
+  .kit .c .l{font-size:10px;color:var(--ink3);font-weight:600;margin-bottom:3px}
+  .kit .c .v{font-size:12.5px;color:var(--ink);line-height:1.45}
+  .ivlist{margin-bottom:4px}
+  .iv{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+  .iv .ivd{font-size:11px;color:var(--ink3);width:46px;flex-shrink:0;padding-top:2px}
+  .iv .ivk{font-size:10px;background:var(--brand-wash);color:var(--brand-d);padding:2px 7px;border-radius:5px;flex-shrink:0;font-weight:600}
+  .iv .ivn{font-size:12.5px;color:var(--ink);flex:1;line-height:1.5}
+  .ivform{background:var(--bg);border-radius:11px;padding:12px;margin-top:10px;margin-bottom:8px}
+  .ivform select{width:auto;margin-bottom:8px;font-family:inherit;font-size:12.5px;border:1px solid var(--line2);border-radius:8px;padding:7px 10px;background:#fff}
+  .ivform textarea{width:100%;min-height:54px;margin-bottom:8px;font-family:inherit;font-size:12.5px;border:1px solid var(--line2);border-radius:8px;padding:8px 10px}
+  .ivform .ivbtn{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:9px 18px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  .ivform .ivbtn:hover{background:var(--brand-d)}
 </style>
 </head>
 <body>
@@ -257,6 +276,16 @@
           <p>精神・発達障がいの従業員の状態をリアルタイムに把握。辞めてしまう前に、支援が必要な人へ。</p>
         </div>
         <div class="kpis" id="kpis"></div>
+        <div class="panel pad" style="margin-bottom:22px">
+          <div class="shead" style="margin:0 0 16px">
+            <h2>コンディション・推定定着率の推移</h2>
+            <div class="leg">
+              <s><i style="background:#0f9d6e"></i>平均コンディション</s>
+              <s><i style="background:#1f6feb"></i>推定定着率</s>
+            </div>
+          </div>
+          <div style="position:relative;height:210px"><canvas id="trendChart" role="img" aria-label="チームの平均コンディションと推定定着率の推移グラフ"></canvas></div>
+        </div>
         <div class="shead"><h2>要対応アラート</h2></div>
         <div class="alerts" id="alerts"></div>
         <div class="shead" style="margin-top:26px">
@@ -295,6 +324,14 @@
             <div class="qfield">
               <div class="ql"><span class="t">睡眠</span><span class="h">昨夜はよく眠れた？</span></div>
               <div class="seg" data-k="sleep"></div>
+            </div>
+            <div class="qfield">
+              <div class="ql"><span class="t">食欲</span><span class="h">食事はとれている？（任意）</span></div>
+              <div class="seg" data-k="appetite"></div>
+            </div>
+            <div class="qfield">
+              <div class="ql"><span class="t">集中力</span><span class="h">仕事に集中できた？（任意）</span></div>
+              <div class="seg" data-k="concentration"></div>
             </div>
             <div class="qfield">
               <div class="ql"><span class="t">気になること</span><span class="h">あれば選択（任意）</span></div>
@@ -360,14 +397,17 @@ const parseDate=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,
 const monthsSince=s=>Math.max(0,Math.round((today-parseDate(s))/(DAY*30)));
 
 async function loadDB(){
-  const [{data:emps,error:e1},{data:logs,error:e2}]=await Promise.all([
+  const [{data:emps,error:e1},{data:logs,error:e2},{data:ivs}]=await Promise.all([
     sb.from('employees').select('*').order('hire_date'),
-    sb.from('condition_logs').select('*').order('log_date')
+    sb.from('condition_logs').select('*').order('log_date'),
+    sb.from('interventions').select('*').order('meet_date')
   ]);
   if(e1||e2){console.error(e1||e2);alert('データ取得に失敗しました。SupabaseのSQL（テーブル作成）が完了しているか確認してください。');return;}
   DB={};AVATAR_C={};
-  emps.forEach(e=>{AVATAR_C[e.id]=e.color;DB[e.id]={id:e.id,name:e.name,ini:e.ini,role:e.role,months:monthsSince(e.hire_date),type:e.type,color:e.color,logs:[]};});
-  logs.forEach(l=>{if(DB[l.employee_id])DB[l.employee_id].logs.push({date:parseDate(l.log_date).getTime(),body:l.body,mood:l.mood,sleep:l.sleep,flags:l.flags||[],cmt:l.comment||''});});
+  emps.forEach(e=>{AVATAR_C[e.id]=e.color;DB[e.id]={id:e.id,name:e.name,ini:e.ini,role:e.role,months:monthsSince(e.hire_date),type:e.type,color:e.color,
+    weakness:e.weakness||'',needs:e.needs||'',hospital:e.hospital||'',medication:e.medication||'',logs:[],ivs:[]};});
+  logs.forEach(l=>{if(DB[l.employee_id])DB[l.employee_id].logs.push({date:parseDate(l.log_date).getTime(),body:l.body,mood:l.mood,sleep:l.sleep,appetite:l.appetite,concentration:l.concentration,flags:l.flags||[],cmt:l.comment||''});});
+  (ivs||[]).forEach(v=>{if(DB[v.employee_id])DB[v.employee_id].ivs.push(v);});
 }
 
 /* ---- seed: 記録が空のときだけデモデータを投入 ---- */
@@ -377,13 +417,13 @@ function genRow(empId,pat,ago){
   else if(pat==='decline')base=Math.max(1.6,4.3-(20-ago)*0.145);
   else if(pat==='volatile')base=3+Math.sin(ago*0.9)*1.5; else base=3.5;
   const j=()=>Math.max(1,Math.min(5,Math.round(base+(Math.random()-0.5)*1.0)));
-  const body=j(),mood=j(),sleep=j(),flags=[];
+  const body=j(),mood=j(),sleep=j(),appetite=j(),concentration=j(),flags=[];
   if(mood<=2&&Math.random()>0.4)flags.push(['人間関係','不安','集中できない'][Math.floor(Math.random()*3)]);
   if(sleep<=2&&Math.random()>0.5)flags.push('体調不良');
   if(body<=2&&Math.random()>0.6)flags.push('業務量が多い');
   let cmt='';
   if(mood<=2&&Math.random()>0.5)cmt=['少し疲れています。','うまく集中できませんでした。','気持ちが沈みがちです。','人と話すのがしんどかったです。'][Math.floor(Math.random()*4)];
-  return {employee_id:empId,log_date:isoDate(d),body,mood,sleep,flags:[...new Set(flags)],comment:cmt};
+  return {employee_id:empId,log_date:isoDate(d),body,mood,sleep,appetite,concentration,flags:[...new Set(flags)],comment:cmt};
 }
 async function seedLogs(){
   const pats={sato:'decline',suzuki:'volatile',tanaka:'stable',kato:'good',mori:'good'};
@@ -399,7 +439,19 @@ async function resetAll(){
 }
 
 /* ---- scoring ---- */
-const avg=l=>(l.body+l.mood+l.sleep)/3;
+const avg=l=>{const v=[l.body,l.mood,l.sleep,l.appetite,l.concentration].filter(x=>x!=null);return v.reduce((a,b)=>a+b,0)/v.length;};
+function aiComment(p){
+  const logs=p.logs;if(logs.length<3)return{t:'データ蓄積中',d:'記録が増えるほど分析の精度が上がります。'};
+  const last5=logs.slice(-5),d=delta(logs);
+  const sleepLow=last5.filter(l=>l.sleep<=2).length;
+  const fc={};last5.forEach(l=>l.flags.forEach(f=>fc[f]=(fc[f]||0)+1));
+  const top=Object.entries(fc).sort((a,b)=>b[1]-a[1])[0];
+  if(d<=-0.5)return{t:'下降トレンドを検知',d:`直近でコンディションが明確に低下しています。${p.name}さんへ早めの1on1を推奨します。`};
+  if(sleepLow>=2)return{t:'睡眠の乱れを検知',d:'睡眠スコアの低い日が続いています。疲労の蓄積による欠勤・離職に注意。業務量の調整を検討してください。'};
+  if(top&&top[1]>=2)return{t:`「${top[0]}」が頻出`,d:`直近で「${top[0]}」の記録が増えています。要因の確認と配慮の見直しを推奨します。`};
+  if(p.months<=3)return{t:'入社初期の見守り期',d:'入社3ヶ月以内は離職が最も集中する時期です。こまめな声かけが定着率を大きく左右します。'};
+  return{t:'安定して推移',d:'良い状態が続いています。ポジティブなフィードバックで好調を維持しましょう。'};
+}
 const rAvg=(logs,n)=>{const r=logs.slice(-n);return r.length?r.reduce((s,l)=>s+avg(l),0)/r.length:null};
 function delta(logs){if(logs.length<4)return 0;const a=rAvg(logs,5),b=rAvg(logs.slice(0,-5),5);return b==null?0:a-b;}
 function risk(p){
@@ -427,7 +479,7 @@ function ring(pct,size,sw,lv){
 }
 
 /* ===== Employee input UI ===== */
-const LABELS={body:['つらい','','ふつう','','good'],mood:['つらい','','ふつう','','good'],sleep:['眠れず','','まあまあ','','ぐっすり']};
+const LABELS={body:['つらい','','ふつう','','good'],mood:['つらい','','ふつう','','good'],sleep:['眠れず','','まあまあ','','ぐっすり'],appetite:['ない','','ふつう','','旺盛'],concentration:['できず','','まあまあ','','集中']};
 const DOTC=['#d6443c','#e08a1e','#c9b020','#62c79e','#0f9d6e'];
 document.querySelectorAll('.seg').forEach(seg=>{
   const k=seg.dataset.k;
@@ -445,16 +497,25 @@ chips.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   b.classList.toggle('sel');const v=b.dataset.v;
   sel.flags.includes(v)?sel.flags=sel.flags.filter(x=>x!==v):sel.flags.push(v);
 });
-const sel={body:null,mood:null,sleep:null,flags:[]};
+const sel={body:null,mood:null,sleep:null,appetite:null,concentration:null,flags:[]};
 async function saveLog(){
   if(!sel.body||!sel.mood||!sel.sleep){toast('体調・気分・睡眠を選んでください',true);return;}
-  const row={employee_id:ME,log_date:isoDate(today),body:sel.body,mood:sel.mood,sleep:sel.sleep,flags:[...sel.flags],comment:document.getElementById('cmt').value.trim()};
+  const row={employee_id:ME,log_date:isoDate(today),body:sel.body,mood:sel.mood,sleep:sel.sleep,appetite:sel.appetite,concentration:sel.concentration,flags:[...sel.flags],comment:document.getElementById('cmt').value.trim()};
   const {error}=await sb.from('condition_logs').upsert(row,{onConflict:'employee_id,log_date'});
   if(error){console.error(error);toast('保存に失敗しました',true);return;}
   toast('記録しました。おつかれさまでした。');
   document.querySelectorAll('.seg button,.chips button').forEach(b=>{b.classList.remove('sel');const d=b.querySelector('.dot');if(d)d.style.background=''});
-  document.getElementById('cmt').value='';sel.body=sel.mood=sel.sleep=null;sel.flags=[];
+  document.getElementById('cmt').value='';sel.body=sel.mood=sel.sleep=sel.appetite=sel.concentration=null;sel.flags=[];
   await loadDB();renderEmp();renderMgr();
+}
+async function addIntervention(id){
+  const note=document.getElementById('ivNote').value.trim();
+  if(!note){toast('対応内容を入力してください',true);return;}
+  const kind=document.getElementById('ivKind').value;
+  const {error}=await sb.from('interventions').insert({employee_id:id,kind,note,meet_date:isoDate(today)});
+  if(error){console.error(error);toast('保存に失敗しました',true);return;}
+  toast('面談を記録しました。');
+  await loadDB();renderMgr();openDetail(id);
 }
 function toast(msg,err){const t=document.getElementById('toast');t.lastChild.textContent=msg;t.style.borderColor=err?'#d6443c':'';t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2600);}
 
@@ -513,6 +574,27 @@ function renderMgr(){
     </div>`;
   }).join('');
   all.forEach(({p,rk})=>spark(`ch-${p.id}`,p.logs.slice(-12),RING_C[rk.lv]));
+  renderTrend();
+}
+function renderTrend(){
+  const el=document.getElementById('trendChart');if(!el)return;
+  const byDate={};
+  Object.values(DB).forEach(p=>p.logs.forEach(l=>{(byDate[l.date]=byDate[l.date]||[]).push(avg(l));}));
+  const dates=Object.keys(byDate).map(Number).sort((a,b)=>a-b).slice(-20);
+  if(!dates.length)return;
+  const labels=dates.map(d=>fmt(new Date(d)));
+  const cond=dates.map(d=>{const a=byDate[d];return a.reduce((s,x)=>s+x,0)/a.length;});
+  const cond10=cond.map(v=>+(v*2).toFixed(1));
+  const ret=cond.map(v=>Math.round(40+v/5*60));
+  charts.push(new Chart(el,{data:{labels,datasets:[
+    {type:'line',label:'平均コンディション',data:cond10,yAxisID:'y',borderColor:'#0f9d6e',backgroundColor:'#0f9d6e22',borderWidth:2.5,fill:true,tension:.4,pointRadius:0,pointHoverRadius:4},
+    {type:'line',label:'推定定着率',data:ret,yAxisID:'y1',borderColor:'#1f6feb',borderWidth:2,borderDash:[5,4],fill:false,tension:.4,pointRadius:0,pointHoverRadius:4}
+  ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y+(c.dataset.yAxisID==='y1'?'%':'/10')}}},
+    scales:{x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:7,font:{size:10},color:'#9aa6a0'}},
+      y:{position:'left',min:0,max:10,ticks:{stepSize:2,font:{size:10},color:'#9aa6a0'},grid:{color:'#eceef0'}},
+      y1:{position:'right',min:0,max:100,ticks:{stepSize:25,font:{size:10},color:'#9aa6a0',callback:v=>v+'%'},grid:{display:false}}},
+    animation:{duration:700}}}));
 }
 function spark(id,logs,color){
   const el=document.getElementById(id);if(!el)return;
@@ -531,10 +613,27 @@ function openDetail(id){
     <div class="av" style="background:${AVATAR_C[id]};width:46px;height:46px">${p.ini}</div>
     <div><div style="font-weight:600;font-size:15px">${p.name} さん</div><div style="font-size:12px;color:var(--ink2)">${p.role} ・ 入社${p.months}ヶ月 ・ ${p.type}障がい</div></div>
     <button class="x" onclick="closeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+  const ai=aiComment(p);
   let b=`<div class="riskbox" style="background:${bg}">
     <div class="g2" style="position:relative;width:64px;height:64px">${ring(rk.pct,64,7,rk.lv)}<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><b style="font-size:18px;font-weight:700;color:${RING_C[rk.lv]}">${rk.pct}</b><s style="font-size:9px;color:var(--ink3)">RISK</s></div></div>
     <div><div class="ti" style="color:${RING_C[rk.lv]}">${lvtx}</div><div class="rs">${rk.reasons.length?rk.reasons.join(' ／ '):'安定して推移しています。'}</div></div>
-  </div><h4>最近の記録</h4>`;
+  </div>
+  <div class="aibox"><div class="ai-ic">AI</div><div class="ai-tx"><b>AIからの気づき</b>${ai.t}：${ai.d}</div></div>
+  <h4>配慮事項カルテ</h4>
+  <div class="kit">
+    <div class="c"><div class="l">苦手なこと</div><div class="v">${p.weakness||'—'}</div></div>
+    <div class="c"><div class="l">必要な配慮</div><div class="v">${p.needs||'—'}</div></div>
+    <div class="c"><div class="l">通院</div><div class="v">${p.hospital||'—'}</div></div>
+    <div class="c"><div class="l">服薬</div><div class="v">${p.medication||'—'}</div></div>
+  </div>
+  <h4>面談・1on1記録</h4>
+  <div class="ivlist">${p.ivs.length?p.ivs.slice().reverse().map(v=>`<div class="iv"><span class="ivd">${fmt(parseDate(v.meet_date))}</span><span class="ivk">${v.kind}</span><span class="ivn">${v.note}</span></div>`).join(''):'<p style="font-size:12px;color:var(--ink3);padding:6px 0">まだ記録がありません</p>'}</div>
+  <div class="ivform">
+    <select id="ivKind"><option>1on1</option><option>声かけ</option><option>面談</option><option>配慮変更</option></select>
+    <textarea id="ivNote" placeholder="対応内容を記録（例：業務量を調整。来週あらためて面談予定）"></textarea>
+    <button class="ivbtn" onclick="addIntervention('${id}')">面談を記録</button>
+  </div>
+  <h4>最近の記録</h4>`;
   b+=p.logs.slice(-10).reverse().map(l=>{const d=new Date(l.date);const fl=l.flags.map(f=>`<span class="tg">${f}</span>`).join('');
     return`<div class="lrow"><span class="dt">${fmt(d)}(${dn(d)})</span><div class="hbars"><span class="hb" style="background:${barColor(l.body)}"></span><span class="hb" style="background:${barColor(l.mood)}"></span><span class="hb" style="background:${barColor(l.sleep)}"></span></div><div class="cm">${l.cmt||'<em>—</em>'}${fl}</div></div>`}).join('');
   document.getElementById('mb').innerHTML=b;
@@ -556,7 +655,10 @@ async function init(){
   const anyLogs=Object.values(DB).some(p=>p.logs.length);
   if(Object.keys(DB).length && !anyLogs){await seedLogs();}
   renderEmp();renderMgr();
-  sb.channel('logs-rt').on('postgres_changes',{event:'*',schema:'public',table:'condition_logs'},async()=>{await loadDB();renderEmp();renderMgr();}).subscribe();
+  sb.channel('rt')
+    .on('postgres_changes',{event:'*',schema:'public',table:'condition_logs'},async()=>{await loadDB();renderEmp();renderMgr();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'interventions'},async()=>{await loadDB();renderMgr();})
+    .subscribe();
 }
 init();
 </script>
